@@ -1,3 +1,92 @@
+<script setup>
+import { ref, onMounted, watch } from "vue";
+const publc_stun_list = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "stun:stun3.l.google.com:19302" },
+  { urls: "stun:stun4.l.google.com:19302" },
+];
+
+const peer = ref(null);
+
+const serverlist = ref([publc_stun_list[0]]);
+const uri = ref("");
+const username = ref("");
+const credential = ref("");
+
+const candidatelist = ref([]);
+
+function addServer() {
+  if (uri.value) {
+    serverlist.value.push({
+      urls: uri.value,
+      username: username.value,
+      credential: credential.value,
+    });
+    uri.value = "";
+    username.value = "";
+    credential.value = "";
+  } else {
+    alert("please input uri");
+  }
+}
+function remove(index) {
+  serverlist.value.splice(index, 1);
+}
+function reset() {
+  serverlist.value = [publc_stun_list[0]];
+  uri.value = "";
+  username.value = "";
+  credential.value = "";
+}
+
+async function gatherCandidates() {
+  candidatelist.value = [];
+  if (peer.value) {
+    peer.value.close();
+    peer.value.onicecandidate = null;
+    peer.value = null;
+  }
+
+  const startTime = Date.now();
+
+  peer.value = new RTCPeerConnection({
+    iceServers: serverlist.value,
+  });
+
+  peer.value.onicecandidate = (event) => {
+    if (!event.candidate) return;
+    console.log("onicecandidate", event.candidate);
+    event.candidate.time = ((Date.now() - startTime) / 1000).toFixed(3);
+    candidatelist.value.push(event.candidate);
+  };
+  peer.value.addTransceiver("audio", { direction: "sendrecv" });
+  const offer = await peer.value.createOffer();
+  peer.value.setLocalDescription(offer);
+}
+
+onMounted(() => {
+  // restore serverlist from localStorage
+  const store_serverlist = window.localStorage.getItem("serverlist");
+  if (store_serverlist) {
+    serverlist.value = JSON.parse(store_serverlist);
+  } else {
+    serverlist.value = [publc_stun_list[0]];
+  }
+
+  gatherCandidates();
+});
+
+watch(
+  serverlist,
+  () => {
+    window.localStorage.setItem("serverlist", JSON.stringify(serverlist.value));
+  },
+  { immediate: false, deep: true }
+);
+</script>
+
 <template>
   <div>
     <h1>Trickle-ICE</h1>
@@ -14,7 +103,7 @@
       </ul>
     </div>
 
-    <form>
+    <form @submit.prevent>
       <div style="margin-bottom: 10px">
         <label for="stun">STUN or TURN URI:</label>
         <input type="text" v-model="uri" />
@@ -68,103 +157,6 @@
     </table>
   </div>
 </template>
-<script>
-const publc_stun_list = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-  { urls: "stun:stun2.l.google.com:19302" },
-  { urls: "stun:stun3.l.google.com:19302" },
-  { urls: "stun:stun4.l.google.com:19302" },
-];
-export default {
-  data() {
-    return {
-      peer: null,
-
-      serverlist: [publc_stun_list[0]],
-      uri: "",
-      username: "",
-      credential: "",
-
-      candidatelist: [],
-    };
-  },
-  watch: {
-    // store serverlist to localStorage
-    serverlist: {
-      handler() {
-        window.localStorage.setItem(
-          "serverlist",
-          JSON.stringify(this.serverlist)
-        );
-      },
-      deep: true,
-    },
-  },
-  async created() {
-    // restore serverlist from localStorage
-    const serverlist = window.localStorage.getItem("serverlist");
-    if (serverlist) {
-      this.serverlist = JSON.parse(serverlist);
-    } else {
-      this.serverlist = [publc_stun_list[0]];
-    }
-
-    this.gatherCandidates();
-  },
-
-  methods: {
-    addServer() {
-      if (this.uri) {
-        this.serverlist.push({
-          urls: this.uri,
-          username: this.username,
-          credential: this.credential,
-        });
-        this.uri = "";
-        this.username = "";
-        this.credential = "";
-      } else {
-        alert("please input uri");
-      }
-    },
-    remove(index) {
-      this.serverlist.splice(index, 1);
-    },
-    reset() {
-      this.serverlist = [publc_stun_list[0]];
-      this.uri = "";
-      this.username = "";
-      this.credential = "";
-    },
-
-    async gatherCandidates() {
-      this.candidatelist = [];
-      if (this.peer) {
-        this.peer.close();
-        this.peer.onicecandidate = null;
-        this.peer = null;
-      }
-
-      const startTime = Date.now();
-
-      this.peer = new RTCPeerConnection({
-        iceServers: this.serverlist,
-      });
-
-      this.peer.onicecandidate = (event) => {
-        if (!event.candidate) return;
-        console.log("onicecandidate", event.candidate);
-        event.candidate.time = ((Date.now() - startTime) / 1000).toFixed(3);
-        this.candidatelist.push(event.candidate);
-      };
-      this.peer.addTransceiver("audio", { direction: "sendrecv" });
-      const offer = await this.peer.createOffer();
-      this.peer.setLocalDescription(offer);
-    },
-  },
-};
-</script>
 
 <style lang="scss">
 .serverlist {
